@@ -9,7 +9,6 @@
         public ushort[] Stack { get; set; }
 
         private bool[] keys;
-        private byte counter;
 
         public ushort Opcode { get; set; }
         public ushort PC { get; set; }
@@ -60,11 +59,6 @@
                 Memory[0x200 + i] = buffer[i];
             }
 
-            LoadFonts();
-        }
-
-        private void LoadFonts()
-        {
             fonts.CopyTo(Memory, 0x0);
         }
 
@@ -81,8 +75,6 @@
         public void Cycle()
         {
             Opcode = (ushort)(Memory[PC] << 8 | Memory[PC + 1]);
-
-            PC += 2;
 
             switch (Opcode & 0xF000)
             {
@@ -150,17 +142,18 @@
                     Ins_BNNN();
                     break;
 
+                case 0xC000:
+                    Ins_CXKK();
+                    break;
+
+                case 0xD000:
+                    Ins_DXYN();
+                    break;
+
                 default:
                     Console.WriteLine($"error: Invalid OpCode: {Opcode:X4} @ PC = 0x{PC:X3}");
                     break;
             }
-
-            if ((counter % 10) == 10)
-            {
-                if (DelayTimer > 0) { DelayTimer--; }
-            }
-
-            counter++;
         }
 
         /// <summary>
@@ -169,6 +162,7 @@
         private void Ins_00E0()
         {
             Vram = new byte[32 * 64];
+            PC += 2;
         }
 
         /// <summary>
@@ -343,15 +337,44 @@
         /// </summary>
         private void Ins_CXKK()
         {
-
+            Random random = new();
+            V[(Opcode & 0x0F00) >> 8] = (byte)(random.Next(0, 0xFF) & (Opcode & 0x00FF));
         }
 
         /// <summary>
-        /// 
+        /// Draws a sprite at coordinate (VX, VY) that has a width of 8 pixels and a height of N pixels.
+        /// Each row of 8 pixels is read as bit-coded starting from memory location I;
+        /// I value does not change after the execution of this instruction. 
+        /// As described above, VF is set to 1 if any screen pixels are flipped from set to unset when the sprite is drawn,
+        /// and to 0 if that does not happen.
         /// </summary>
+        /// https://github.com/JamesGriffin/CHIP-8-Emulator/blob/master/src/chip8.cpp
         private void Ins_DXYN()
         {
+            var x = V[(Opcode & 0x0F00) >> 8];
+            var y = V[(Opcode & 0x00F0) >> 4];
+            var height = Opcode & 0x000F;
+            ushort pixel;
 
+            V[0xF] = 0;
+            for (int yLine = 0; yLine < height; yLine++)
+            {
+                pixel = Memory[I + yLine];
+                for (int xLine = 0; xLine < 8; xLine++)
+                {
+                    if ((pixel & (0x80 >> xLine)) != 0)
+                    {
+                        if (Vram[(x + xLine + ((y + yLine) * 64))] == 1)
+                        {
+                            V[0xF] = 1;
+                        }
+
+                        Vram[x + xLine + ((y + yLine) * 64)] ^= 1;
+                    }
+                }
+            }
+
+            PC += 2;
         }
 
         /// <summary>
